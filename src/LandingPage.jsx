@@ -284,7 +284,7 @@ return (
 </section>
 
 {/* Benefits Section */}
-<section className="py-24 bg-gradient-to-br from-blue-50 to-indigo-50">
+<section id="contact" className="py-24 bg-gradient-to-br from-blue-50 to-indigo-50">
 <div className="max-w-7xl mx-auto px-6">
 <div className="grid md:grid-cols-2 gap-12 items-center">
 <div>
@@ -397,12 +397,20 @@ className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white r
 ? 'Join leading companies using data to retain their best talent.'
 : 'En iyi yeteneklerini elde tutmak için veri kullanan önde gelen şirketlere katılın.'}
 </p>
+<div className="flex flex-col sm:flex-row gap-4 justify-center">
 <button
 onClick={onAccessDashboard}
 className="px-8 py-4 bg-white text-blue-600 rounded-xl font-semibold hover:bg-blue-50 transition-all shadow-xl hover:shadow-2xl"
 >
 {t.hero.ctaPrimary}
 </button>
+<button
+onClick={() => scrollToSection('contact')}
+className="px-8 py-4 bg-transparent text-white border-2 border-white rounded-xl font-semibold hover:bg-white/10 transition-all shadow-xl hover:shadow-2xl"
+>
+{t.contact.submitButton}
+</button>
+</div>
 </div>
 </section>
 
