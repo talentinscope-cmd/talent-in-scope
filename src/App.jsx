@@ -769,94 +769,54 @@ function App() {
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-slate-900">{t.departmentRisk}</h2>
-              <div className="flex items-center gap-3 text-xs text-slate-500">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
-                  {formatMonthYear(selectedMonth)}
-                </span>
-                {comparisonDeptData.length > 0 && (
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-slate-400 inline-block"></span>
-                    {formatMonthYear(comparisonMonth)}
-                  </span>
-                )}
-              </div>
+              <span className="text-xs text-slate-500">{formatMonthYear(selectedMonth)}</span>
             </div>
             <div className="space-y-4">
               {functionData.sort((a, b) => b.openToWork - a.openToWork).map((dept) => {
                 const risk = calculateRisk(dept.openToWork);
                 const riskLabel = risk === 'high' ? t.highRisk : risk === 'medium' ? t.mediumRisk : t.lowRisk;
                 const compDept = comparisonDeptData.find(d => d.function === dept.function);
-                const diff = compDept ? +(dept.openToWork - compDept.openToWork).toFixed(1) : null;
+                const diff = compDept ? dept.openToWork - compDept.openToWork : null;
                 return (
-                  <div key={dept.function} className="p-4 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-3">
-                        <span className="font-medium text-slate-900">{dept.function}</span>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          risk === 'high' ? 'bg-red-100 text-red-700' :
-                          risk === 'medium' ? 'bg-amber-100 text-amber-700' :
-                          'bg-green-100 text-green-700'
-                        }`}>
-                          {riskLabel}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        {/* Comparison period value */}
-                        {compDept && (
-                          <div className="text-right">
-                            <div className="text-sm font-medium text-slate-400">{formatPercent(compDept.openToWork)}</div>
-                            <div className="text-xs text-slate-400">{compDept.employees} {t.employees}</div>
-                          </div>
-                        )}
-                        {/* Change indicator */}
-                        {diff !== null && (
-                          <div className={`flex items-center gap-1 text-sm font-semibold px-2 py-1 rounded-lg ${
-                            diff > 0 ? 'text-red-600 bg-red-50' :
-                            diff < 0 ? 'text-green-600 bg-green-50' :
-                            'text-slate-500 bg-slate-100'
+                  <div key={dept.function} className="flex items-center gap-4 p-4 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="font-medium text-slate-900">{dept.function}</span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            risk === 'high' ? 'bg-red-100 text-red-700' :
+                            risk === 'medium' ? 'bg-amber-100 text-amber-700' :
+                            'bg-green-100 text-green-700'
                           }`}>
-                            {diff > 0 ? <TrendingUp className="w-3 h-3" /> : diff < 0 ? <TrendingDown className="w-3 h-3" /> : <span>–</span>}
-                            {diff !== 0 ? `${diff > 0 ? '+' : ''}${formatPercent(Math.abs(diff))}` : language === 'tr' ? 'Değişim yok' : 'No change'}
-                          </div>
-                        )}
-                        {/* Current period value */}
-                        <div className="text-right min-w-[60px]">
-                          <div className="text-lg font-bold text-slate-900">{formatPercent(dept.openToWork)}</div>
+                            {riskLabel}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-semibold text-slate-900">{formatPercent(dept.openToWork)}</div>
+                          {diff !== null && (
+                            <div className={`text-xs font-medium flex items-center justify-end gap-1 ${diff > 0 ? 'text-red-600' : diff < 0 ? 'text-green-600' : 'text-slate-500'}`}>
+                              {diff > 0 ? <TrendingUp className="w-3 h-3" /> : diff < 0 ? <TrendingDown className="w-3 h-3" /> : null}
+                              {diff > 0 ? '+' : ''}{formatPercent(Math.abs(diff))} {t.fromLastMonth} {formatMonthYear(comparisonMonth)}
+                            </div>
+                          )}
                           <div className="text-xs text-slate-500">{dept.employees} {t.employees}</div>
                         </div>
                       </div>
-                    </div>
-                    {/* Progress bar - shows both periods */}
-                    <div className="relative w-full bg-slate-200 rounded-full h-2 mt-2">
-                      {/* Comparison bar (background, lighter) */}
-                      {compDept && (
+                      <div className="w-full bg-slate-200 rounded-full h-2">
                         <div
-                          className="absolute h-2 rounded-full bg-slate-300"
-                          style={{ width: `${Math.min(compDept.openToWork * 5, 100)}%` }}
+                          className={`h-2 rounded-full transition-all ${
+                            risk === 'high' ? 'bg-red-500' :
+                            risk === 'medium' ? 'bg-amber-500' :
+                            'bg-green-500'
+                          }`}
+                          style={{ width: `${Math.min(dept.openToWork * 5, 100)}%` }}
                         />
-                      )}
-                      {/* Current bar (foreground) */}
-                      <div
-                        className={`absolute h-2 rounded-full transition-all ${
-                          risk === 'high' ? 'bg-red-500' :
-                          risk === 'medium' ? 'bg-amber-500' :
-                          'bg-green-500'
-                        }`}
-                        style={{ width: `${Math.min(dept.openToWork * 5, 100)}%` }}
-                      />
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-            {comparisonDeptData.length === 0 && (
-              <p className="text-xs text-slate-400 mt-4 text-center">
-                {language === 'tr'
-                  ? `${formatMonthYear(comparisonMonth)} için departman verisi bulunamadı`
-                  : `No department data found for ${formatMonthYear(comparisonMonth)}`}
-              </p>
-            )}
           </div>
         )}
       </div>
