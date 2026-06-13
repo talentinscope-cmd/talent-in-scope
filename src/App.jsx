@@ -49,7 +49,7 @@ const translations = {
     atIndustryAvg: 'At industry average',
     trendAnalysis: 'Historical Trend Analysis',
     yourCompany: 'Your Company',
-    departmentRisk: 'Department Risk Analysis',
+    departmentRisk: 'Function Risk Analysis',
     highRisk: 'High Risk',
     mediumRisk: 'Medium Risk',
     lowRisk: 'Low Risk',
@@ -101,7 +101,7 @@ const translations = {
     atIndustryAvg: 'Sektör ortalamasında',
     trendAnalysis: 'Geçmiş Trend Analizi',
     yourCompany: 'Şirketiniz',
-    departmentRisk: 'Departman Risk Analizi',
+    departmentRisk: 'Fonksiyon Risk Analizi',
     highRisk: 'Yüksek Risk',
     mediumRisk: 'Orta Risk',
     lowRisk: 'Düşük Risk',
@@ -253,6 +253,7 @@ function App() {
         if (!deptByMonth[row.Month]) deptByMonth[row.Month] = [];
         deptByMonth[row.Month].push({
           function: row.Function,
+          functionTR: row.Function_TR || '',
           openToWork: parseFloat(row['Open_To_Work_%']),
           employees: parseInt(row.Employees)
         });
@@ -782,7 +783,9 @@ function App() {
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-3">
-                          <span className="font-medium text-slate-900">{dept.function}</span>
+                          <span className="font-medium text-slate-900">
+                            {language === 'tr' && dept.functionTR ? dept.functionTR : dept.function}
+                          </span>
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                             risk === 'high' ? 'bg-red-100 text-red-700' :
                             risk === 'medium' ? 'bg-amber-100 text-amber-700' :
