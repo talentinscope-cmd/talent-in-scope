@@ -72,7 +72,25 @@ const translations = {
     september: 'September',
     october: 'October',
     november: 'November',
-    december: 'December'
+    december: 'December',
+    // Drill-down page
+    departmentDetail: 'Department Detail',
+    backToOverview: '← Overview',
+    vsIndustryAvg: 'vs Industry Avg',
+    departmentSize: 'Department Size',
+    riskLevel: 'Risk Level',
+    current: 'current',
+    sixMonthTrend: '6-Month Trend',
+    trendSubtitle: '% open to work vs industry average',
+    riskHistory: 'Risk History',
+    riskHistorySubtitle: 'Monthly classification',
+    seniorityTitle: 'Open to Work by Seniority',
+    senioritySubtitle: 'Where is attrition risk concentrated?',
+    viewDeptDetail: 'View breakdown →',
+    momChange: 'MoM',
+    insightLabel: 'Insight',
+    legendCompany: 'Your company',
+    legendIndustry: 'Industry avg',
   },
   tr: {
     signIn: 'Giriş Yap',
@@ -124,7 +142,25 @@ const translations = {
     september: 'Eylül',
     october: 'Ekim',
     november: 'Kasım',
-    december: 'Aralık'
+    december: 'Aralık',
+    // Drill-down page
+    departmentDetail: 'Departman Detayı',
+    backToOverview: '← Genel Bakış',
+    vsIndustryAvg: 'Sektör Farkı',
+    departmentSize: 'Departman Büyüklüğü',
+    riskLevel: 'Risk Seviyesi',
+    current: 'güncel',
+    sixMonthTrend: '6 Aylık Trend',
+    trendSubtitle: 'İş arama oranı vs sektör ortalaması',
+    riskHistory: 'Risk Geçmişi',
+    riskHistorySubtitle: 'Aylık sınıflandırma',
+    seniorityTitle: 'Kıdeme Göre İş Arayanlar',
+    senioritySubtitle: 'Attrition riski nerede yoğunlaşıyor?',
+    viewDeptDetail: 'Detayları gör →',
+    momChange: 'AoA',
+    insightLabel: 'Yorum',
+    legendCompany: 'Şirketiniz',
+    legendIndustry: 'Sektör ort.',
   }
 };
 
@@ -163,6 +199,8 @@ function App() {
   const [monthlyData, setMonthlyData] = useState({});
   const [allDeptData, setAllDeptData] = useState({});
   const [trendData, setTrendData] = useState([]);
+  const [selectedDept, setSelectedDept] = useState(null);
+  const [showDrilldown, setShowDrilldown] = useState(false);
 
   // Save language preference
   useEffect(() => {
@@ -590,7 +628,7 @@ function App() {
   }
 
   // Main Dashboard
-  return (
+  const mainDashboard = (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Header */}
       <header className="bg-white border-b border-slate-200 shadow-sm">
@@ -779,7 +817,11 @@ function App() {
                 const compDept = comparisonDeptData.find(d => d.function === dept.function);
                 const diff = compDept ? dept.openToWork - compDept.openToWork : null;
                 return (
-                  <div key={dept.function} className="flex items-center gap-4 p-4 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors">
+                  <div
+                    key={dept.function}
+                    className="flex items-center gap-4 p-4 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
+                    onClick={() => { setSelectedDept(dept); setShowDrilldown(true); }}
+                  >
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-3">
@@ -815,11 +857,335 @@ function App() {
                           style={{ width: `${Math.min(dept.openToWork * 5, 100)}%` }}
                         />
                       </div>
+                      <div className="mt-1 text-xs text-blue-600 font-medium">{t.viewDeptDetail}</div>
                     </div>
                   </div>
                 );
               })}
             </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ---------- DRILLDOWN PAGE ----------
+  if (showDrilldown && selectedDept) {
+    return (
+      <DepartmentDetail
+        dept={selectedDept}
+        allDeptData={allDeptData}
+        selectedMonth={selectedMonth}
+        allDepts={functionData}
+        trendData={trendData}
+        language={language}
+        t={t}
+        formatPercent={formatPercent}
+        formatMonthYear={formatMonthYear}
+        calculateRisk={calculateRisk}
+        onBack={() => setShowDrilldown(false)}
+        onSelectDept={(d) => setSelectedDept(d)}
+        companyName={companyName}
+        setLanguage={setLanguage}
+        handleSignOut={handleSignOut}
+        formatDate={formatDate}
+        lastUpdated={lastUpdated}
+      />
+    );
+  }
+
+  return mainDashboard;
+}
+
+// ─────────────────────────────────────────────
+// DEPARTMENT DETAIL PAGE
+// ─────────────────────────────────────────────
+function DepartmentDetail({
+  dept, allDeptData, selectedMonth, allDepts, trendData,
+  language, t, formatPercent, formatMonthYear, calculateRisk,
+  onBack, onSelectDept, companyName, setLanguage, handleSignOut,
+  formatDate, lastUpdated
+}) {
+  const deptName = language === 'tr' && dept.functionTR ? dept.functionTR : dept.function;
+
+  // Build 6-month history for this department from allDeptData
+  const months = Object.keys(allDeptData).sort();
+  const deptHistory = months.map(m => {
+    const row = (allDeptData[m] || []).find(d => d.function === dept.function);
+    const trendRow = trendData.find(r => r.month === m);
+    return {
+      month: m,
+      value: row ? row.openToWork : null,
+      industry: trendRow ? trendRow.industry : null,
+    };
+  }).filter(r => r.value !== null);
+
+  // Risk history derived from deptHistory
+  const riskHistory = deptHistory.map(r => ({
+    month: r.month,
+    risk: calculateRisk(r.value),
+  }));
+
+  const risk = calculateRisk(dept.openToWork);
+  const riskLabel = risk === 'high' ? t.highRisk : risk === 'medium' ? t.mediumRisk : t.lowRisk;
+
+  // Month-over-month delta (last two available months for this dept)
+  const prev = deptHistory.length >= 2 ? deptHistory[deptHistory.length - 2] : null;
+  const delta = prev ? dept.openToWork - prev.value : null;
+
+  // vs industry for current month
+  const currentTrend = trendData.find(r => r.month === selectedMonth);
+  const vsIndustry = currentTrend ? dept.openToWork - currentTrend.industry : null;
+
+  const riskColors = {
+    high: { bg: '#FEF2F2', color: '#B91C1C', border: '#FECACA', badge: 'bg-red-100 text-red-700' },
+    medium: { bg: '#FFFBEB', color: '#B45309', border: '#FDE68A', badge: 'bg-amber-100 text-amber-700' },
+    low: { bg: '#F0FDF4', color: '#166534', border: '#BBF7D0', badge: 'bg-green-100 text-green-700' },
+  };
+  const rc = riskColors[risk];
+
+  const shortMonth = (m) => {
+    const [, mon] = m.split('-');
+    const idx = parseInt(mon) - 1;
+    const en = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const tr = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+    return language === 'tr' ? tr[idx] : en[idx];
+  };
+
+  // SVG trend chart
+  const W = 480, H = 160, PL = 12, PR = 12, PT = 10, PB = 22;
+  const cW = W - PL - PR, cH = H - PT - PB;
+  const allVals = deptHistory.flatMap(r => [r.value, r.industry].filter(Boolean));
+  const minV = allVals.length ? Math.min(...allVals) - 2 : 0;
+  const maxV = allVals.length ? Math.max(...allVals) + 2 : 25;
+  const xStep = deptHistory.length > 1 ? cW / (deptHistory.length - 1) : cW;
+  const yScale = v => PT + cH - ((v - minV) / (maxV - minV)) * cH;
+
+  const trendPts = deptHistory.map((r, i) => `${PL + i * xStep},${yScale(r.value)}`).join(' ');
+  const industryPts = deptHistory.filter(r => r.industry !== null).map((r, i) => `${PL + i * xStep},${yScale(r.industry)}`).join(' ');
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      {/* Header — same as main dashboard */}
+      <header className="bg-white border-b border-slate-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                <Users className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">{t.talentInScope}</h1>
+                <p className="text-sm text-slate-500">{companyName}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setLanguage(language === 'en' ? 'tr' : 'en')}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:text-slate-900"
+              >
+                <Globe className="w-4 h-4" />
+                {language === 'en' ? 'EN' : 'TR'}
+              </button>
+              <button
+                onClick={handleSignOut}
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 flex items-center gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                {t.signOut}
+              </button>
+            </div>
+          </div>
+          <div className="mt-2 text-xs text-slate-500">
+            {t.lastUpdated}: {formatDate(lastUpdated)}
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 mb-6 text-sm">
+          <button
+            onClick={onBack}
+            className="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+          >
+            {t.backToOverview}
+          </button>
+          <span className="text-slate-400">/</span>
+          <span className="font-medium text-slate-900">{deptName}</span>
+        </div>
+
+        {/* Department Switcher */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          {allDepts.map(d => {
+            const n = language === 'tr' && d.functionTR ? d.functionTR : d.function;
+            const active = d.function === dept.function;
+            return (
+              <button
+                key={d.function}
+                onClick={() => onSelectDept(d)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                  active
+                    ? 'bg-blue-50 border-blue-400 text-blue-700'
+                    : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'
+                }`}
+              >{n}</button>
+            );
+          })}
+        </div>
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {/* Open to Work */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-slate-500">{t.openToWork}</span>
+              <AlertCircle className="w-4 h-4 text-slate-300" />
+            </div>
+            <div className="text-2xl font-bold text-slate-900">{formatPercent(dept.openToWork)}</div>
+            {delta !== null && (
+              <div className={`text-xs font-medium flex items-center gap-1 mt-1 ${delta > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {delta > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                {delta > 0 ? '+' : ''}{formatPercent(Math.abs(delta))} {t.momChange}
+              </div>
+            )}
+          </div>
+
+          {/* vs Industry */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-slate-500">{t.vsIndustryAvg}</span>
+              <TrendingUp className="w-4 h-4 text-slate-300" />
+            </div>
+            {vsIndustry !== null ? (
+              <>
+                <div className={`text-2xl font-bold ${vsIndustry > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {vsIndustry > 0 ? '+' : ''}{formatPercent(Math.abs(vsIndustry))}
+                </div>
+                <div className="text-xs text-slate-400 mt-1">
+                  {vsIndustry > 0 ? t.aboveIndustry : t.belowIndustry}
+                </div>
+              </>
+            ) : <div className="text-2xl font-bold text-slate-400">—</div>}
+          </div>
+
+          {/* Headcount */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-slate-500">{t.departmentSize}</span>
+              <Users className="w-4 h-4 text-slate-300" />
+            </div>
+            <div className="text-2xl font-bold text-slate-900">{dept.employees}</div>
+            <div className="text-xs text-slate-400 mt-1">{t.employees}</div>
+          </div>
+
+          {/* Risk Level */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-slate-500">{t.riskLevel}</span>
+              <AlertCircle className="w-4 h-4 text-slate-300" />
+            </div>
+            <div className={`text-lg font-bold mt-1 ${risk === 'high' ? 'text-red-600' : risk === 'medium' ? 'text-amber-600' : 'text-green-600'}`}>
+              {riskLabel}
+            </div>
+            <div className="text-xs text-slate-400 mt-1">{t.current}</div>
+          </div>
+        </div>
+
+        {/* Charts Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          {/* Trend Chart — 2/3 width */}
+          <div className="md:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <h2 className="text-base font-semibold text-slate-900 mb-1">{t.sixMonthTrend}</h2>
+            <p className="text-xs text-slate-500 mb-4">{t.trendSubtitle}</p>
+            {deptHistory.length > 0 ? (
+              <>
+                <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
+                  {/* Grid lines */}
+                  {[0,0.25,0.5,0.75,1].map(f => (
+                    <line key={f} x1={PL} x2={W-PR} y1={PT + cH * (1-f)} y2={PT + cH * (1-f)} stroke="#e2e8f0" strokeWidth="0.5"/>
+                  ))}
+                  {/* Industry line */}
+                  {industryPts && <polyline points={industryPts} fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="5,3" opacity="0.7"/>}
+                  {/* Company line */}
+                  <polyline points={trendPts} fill="none" stroke="#3b82f6" strokeWidth="2.5"/>
+                  {/* Dots */}
+                  {deptHistory.map((r, i) => (
+                    <circle key={i} cx={PL + i * xStep} cy={yScale(r.value)} r="4" fill="#3b82f6"/>
+                  ))}
+                  {/* Month labels */}
+                  {deptHistory.map((r, i) => (
+                    <text key={i} x={PL + i * xStep} y={H - 4} textAnchor="middle" fontSize="10" fill="#94a3b8">{shortMonth(r.month)}</text>
+                  ))}
+                </svg>
+                <div className="flex items-center gap-5 mt-3 text-xs text-slate-500">
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-5 h-0.5 bg-blue-500 rounded"/>
+                    {t.legendCompany}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-5 border-t-2 border-dashed border-slate-400"/>
+                    {t.legendIndustry}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-slate-400 py-8 text-center">
+                {language === 'tr' ? 'Geçmiş veri bulunamadı.' : 'No historical data available.'}
+              </p>
+            )}
+          </div>
+
+          {/* Risk History — 1/3 width */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <h2 className="text-base font-semibold text-slate-900 mb-1">{t.riskHistory}</h2>
+            <p className="text-xs text-slate-500 mb-4">{t.riskHistorySubtitle}</p>
+            <div className="space-y-2">
+              {riskHistory.length > 0 ? riskHistory.map((r, i) => {
+                const rc2 = riskColors[r.risk];
+                const label = r.risk === 'high' ? t.highRisk : r.risk === 'medium' ? t.mediumRisk : t.lowRisk;
+                return (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 w-8 shrink-0">{shortMonth(r.month)}</span>
+                    <div
+                      className="flex-1 h-6 rounded flex items-center px-2"
+                      style={{ background: rc2.bg, border: `1px solid ${rc2.border}` }}
+                    >
+                      <span className="text-xs font-semibold" style={{ color: rc2.color }}>{label}</span>
+                    </div>
+                  </div>
+                );
+              }) : (
+                <p className="text-sm text-slate-400">
+                  {language === 'tr' ? 'Veri yok.' : 'No data.'}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Trend Analysis for this dept (recharts, reuse existing data) */}
+        {deptHistory.length > 1 && (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <h2 className="text-base font-semibold text-slate-900 mb-4">{t.trendAnalysis}</h2>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={deptHistory.map(r => ({
+                month: shortMonth(r.month),
+                openToWork: r.value,
+                industry: r.industry,
+              }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0"/>
+                <XAxis dataKey="month" stroke="#64748b" style={{ fontSize: '12px' }}/>
+                <YAxis stroke="#64748b" style={{ fontSize: '12px' }}/>
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                  formatter={(value) => value !== null ? formatPercent(value) : '—'}
+                />
+                <Legend/>
+                <Line type="monotone" dataKey="openToWork" stroke="#3b82f6" strokeWidth={2.5} name={deptName} dot={{ fill: '#3b82f6', r: 4 }}/>
+                <Line type="monotone" dataKey="industry" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="5 5" name={t.industryAverage} dot={{ fill: '#94a3b8', r: 3 }}/>
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         )}
       </div>
