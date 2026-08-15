@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import Papa from 'papaparse';
 import { TrendingUp, TrendingDown, Users, AlertCircle, Calendar, Download, LogOut, Globe } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import LandingPage from './LandingPage.jsx';
@@ -10,15 +9,6 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
-
-// Google Sheets URLs
-const SHEETS = {
-  companies: import.meta.env.VITE_SHEET_COMPANIES,
-  users: import.meta.env.VITE_SHEET_USERS,
-  monthly: import.meta.env.VITE_SHEET_MONTHLY,
-  departments: import.meta.env.VITE_SHEET_DEPARTMENTS,
-  trends: import.meta.env.VITE_SHEET_TRENDS
-};
 
 // Translations
 const translations = {
@@ -228,48 +218,44 @@ function App() {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
       setUser(session.user);
-      const compId = session.user.user_metadata?.company_id;
-      if (compId) {
-        setCompanyId(compId);
-        await loadCompanyData(compId);
+      const { data: profile } = await supabase
+        .from('users')
+        .select('company_id, active')
+        .eq('id', session.user.id)
+        .single();
+      if (profile?.company_id && profile.active !== false) {
+        setCompanyId(profile.company_id);
+        await loadCompanyData(profile.company_id);
         setIsAuthenticated(true);
         setShowLanding(false);
       }
     }
   };
 
-  // Fetch CSV data
-  const fetchCSV = async (url) => {
-    const response = await fetch(url);
-    const csvText = await response.text();
-    return new Promise((resolve) => {
-      Papa.parse(csvText, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => resolve(results.data)
-      });
-    });
-  };
-
-  // Load company data from Google Sheets
+  // Load company data from Supabase (row-level security scopes every query
+  // to the signed-in user's own company automatically)
   const loadCompanyData = async (compId) => {
     try {
-      // Fetch companies to get company name
-      const companies = await fetchCSV(SHEETS.companies);
-      const company = companies.find(c => c.Company_ID === compId);
+      const { data: company } = await supabase
+        .from('companies')
+        .select('name')
+        .eq('id', compId)
+        .single();
       if (company) {
-        setCompanyName(company.Company_Name);
+        setCompanyName(company.name);
       }
 
-      // Fetch monthly data
-      const monthlyRaw = await fetchCSV(SHEETS.monthly);
-      const filteredMonthly = monthlyRaw.filter(row => row.Company_ID === compId);
+      const { data: monthlyRows, error: monthlyErr } = await supabase
+        .from('monthly')
+        .select('month, total_employees, open_to_work_pct, industry_avg_pct')
+        .eq('company_id', compId);
+      if (monthlyErr) throw monthlyErr;
       const monthlyObj = {};
-      filteredMonthly.forEach(row => {
-        monthlyObj[row.Month] = {
-          totalEmployees: parseInt(row.Total_Employees),
-          openToWork: parseFloat(row['Open_To_Work_%']),
-          industryAvg: parseFloat(row['Industry_Avg_%'])
+      (monthlyRows || []).forEach(row => {
+        monthlyObj[row.month] = {
+          totalEmployees: row.total_employees,
+          openToWork: Number(row.open_to_work_pct),
+          industryAvg: Number(row.industry_avg_pct)
         };
       });
       setMonthlyData(monthlyObj);
@@ -283,28 +269,33 @@ function App() {
         }
       }
 
-      // Fetch department data for all months
-      const deptRaw = await fetchCSV(SHEETS.departments);
-      const filteredDept = deptRaw.filter(row => row.Company_ID === compId);
+      const { data: deptRows, error: deptErr } = await supabase
+        .from('departments')
+        .select('month, function, function_tr, open_to_work_pct, employees')
+        .eq('company_id', compId);
+      if (deptErr) throw deptErr;
       const deptByMonth = {};
-      filteredDept.forEach(row => {
-        if (!deptByMonth[row.Month]) deptByMonth[row.Month] = [];
-        deptByMonth[row.Month].push({
-          function: row.Function,
-          functionTR: row.Function_TR || '',
-          openToWork: parseFloat(row['Open_To_Work_%']),
-          employees: parseInt(row.Employees)
+      (deptRows || []).forEach(row => {
+        if (!deptByMonth[row.month]) deptByMonth[row.month] = [];
+        deptByMonth[row.month].push({
+          function: row.function,
+          functionTR: row.function_tr || '',
+          openToWork: Number(row.open_to_work_pct),
+          employees: row.employees
         });
       });
       setAllDeptData(deptByMonth);
 
-      // Fetch trend data
-      const trendRaw = await fetchCSV(SHEETS.trends);
-      const filteredTrend = trendRaw.filter(row => row.Company_ID === compId);
-      const trendFormatted = filteredTrend.map(row => ({
-        month: row.Month,
-        openToWork: parseFloat(row.Open_To_Work),
-        industry: parseFloat(row.Industry)
+      const { data: trendRows, error: trendErr } = await supabase
+        .from('trends')
+        .select('month, open_to_work, industry')
+        .eq('company_id', compId)
+        .order('month');
+      if (trendErr) throw trendErr;
+      const trendFormatted = (trendRows || []).map(row => ({
+        month: row.month,
+        openToWork: Number(row.open_to_work),
+        industry: Number(row.industry)
       }));
       setTrendData(trendFormatted);
 
@@ -334,43 +325,56 @@ function App() {
     }
 
     setLoading(true);
-    
+
     try {
-      // Verify invite code exists
-      const companies = await fetchCSV(SHEETS.companies);
-      const company = companies.find(c => 
-        c.Invite_Code === inviteCode && c.Active === 'TRUE'
-      );
-      
-      if (!company) {
+      // Quick client-side check for a friendly error message. This is only
+      // a UX shortcut — the invite code is re-validated server-side (inside
+      // a database trigger) when the account is actually created, so this
+      // check can't be bypassed to gain access to another company's data.
+      const { data: codeValid } = await supabase.rpc('check_invite_code', {
+        p_code: inviteCode
+      });
+
+      if (!codeValid) {
         setError(t.invalidInviteCode);
         setLoading(false);
         return;
       }
 
-      // Create user in Supabase
+      // Create user in Supabase. The company is resolved and verified
+      // server-side from the invite code — the client never asserts its
+      // own company_id.
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: email,
         password: password,
         options: {
           data: {
-            company_id: company.Company_ID
+            invite_code: inviteCode
           }
         }
       });
-      
+
       if (signUpError) {
-        setError(signUpError.message);
+        setError(t.invalidInviteCode);
       } else {
         setUser(data.user);
-        setCompanyId(company.Company_ID);
-        await loadCompanyData(company.Company_ID);
-        setIsAuthenticated(true);
+        const { data: profile } = await supabase
+          .from('users')
+          .select('company_id')
+          .eq('id', data.user.id)
+          .single();
+        if (profile?.company_id) {
+          setCompanyId(profile.company_id);
+          await loadCompanyData(profile.company_id);
+          setIsAuthenticated(true);
+        } else {
+          setError(t.invalidInviteCode);
+        }
       }
     } catch (err) {
       setError(err.message);
     }
-    
+
     setLoading(false);
   };
 
@@ -389,28 +393,36 @@ function App() {
     }
 
     setLoading(true);
-    
+
     try {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: email,
         password: password
       });
-      
+
       if (signInError) {
         setError(t.invalidCredentials);
       } else {
         setUser(data.user);
-        const compId = data.user.user_metadata?.company_id;
-        if (compId) {
-          setCompanyId(compId);
-          await loadCompanyData(compId);
+        const { data: profile } = await supabase
+          .from('users')
+          .select('company_id, active')
+          .eq('id', data.user.id)
+          .single();
+        if (profile?.company_id && profile.active !== false) {
+          setCompanyId(profile.company_id);
+          await loadCompanyData(profile.company_id);
           setIsAuthenticated(true);
+        } else if (profile && profile.active === false) {
+          setError(t.accountInactive);
+        } else {
+          setError(t.invalidCredentials);
         }
       }
     } catch (err) {
       setError(t.invalidCredentials);
     }
-    
+
     setLoading(false);
   };
 
