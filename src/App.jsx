@@ -51,6 +51,8 @@ const translations = {
     passwordRequired: 'Password is required',
     codeRequired: 'Company invite code is required',
     loading: 'Loading...',
+    dataLoadError: 'Data could not be loaded.',
+    tryAgain: 'Try again',
     january: 'January',
     february: 'February',
     march: 'March',
@@ -121,6 +123,8 @@ const translations = {
     passwordRequired: 'Şifre gereklidir',
     codeRequired: 'Şirket davet kodu gereklidir',
     loading: 'Yükleniyor...',
+    dataLoadError: 'Veriler yüklenemedi.',
+    tryAgain: 'Tekrar dene',
     january: 'Ocak',
     february: 'Şubat',
     march: 'Mart',
@@ -232,23 +236,43 @@ function App() {
     }
   };
 
-  // Load company data from Supabase (row-level security scopes every query
-  // to the signed-in user's own company automatically)
+  // Veriler RLS politikaları ile şirket bazında filtrelenir.
   const loadCompanyData = async (compId) => {
+    setError('');
     try {
-      const { data: company } = await supabase
-        .from('companies')
-        .select('name')
-        .eq('id', compId)
-        .single();
+      const [
+        { data: company, error: companyErr },
+        { data: monthlyRows, error: monthlyErr },
+        { data: deptRows, error: deptErr },
+        { data: trendRows, error: trendErr }
+      ] = await Promise.all([
+        supabase
+          .from('companies')
+          .select('name')
+          .eq('id', compId)
+          .maybeSingle(),
+        supabase
+          .from('monthly')
+          .select('month, total_employees, open_to_work_pct, industry_avg_pct')
+          .eq('company_id', compId)
+          .order('month'),
+        supabase
+          .from('departments')
+          .select('month, function, function_tr, open_to_work_pct, employees')
+          .eq('company_id', compId)
+          .order('month'),
+        supabase
+          .from('trends')
+          .select('month, open_to_work, industry')
+          .eq('company_id', compId)
+          .order('month')
+      ]);
+
+      if (companyErr) throw companyErr;
       if (company) {
         setCompanyName(company.name);
       }
 
-      const { data: monthlyRows, error: monthlyErr } = await supabase
-        .from('monthly')
-        .select('month, total_employees, open_to_work_pct, industry_avg_pct')
-        .eq('company_id', compId);
       if (monthlyErr) throw monthlyErr;
       const monthlyObj = {};
       (monthlyRows || []).forEach(row => {
@@ -269,10 +293,6 @@ function App() {
         }
       }
 
-      const { data: deptRows, error: deptErr } = await supabase
-        .from('departments')
-        .select('month, function, function_tr, open_to_work_pct, employees')
-        .eq('company_id', compId);
       if (deptErr) throw deptErr;
       const deptByMonth = {};
       (deptRows || []).forEach(row => {
@@ -286,11 +306,6 @@ function App() {
       });
       setAllDeptData(deptByMonth);
 
-      const { data: trendRows, error: trendErr } = await supabase
-        .from('trends')
-        .select('month, open_to_work, industry')
-        .eq('company_id', compId)
-        .order('month');
       if (trendErr) throw trendErr;
       const trendFormatted = (trendRows || []).map(row => ({
         month: row.month,
@@ -436,6 +451,7 @@ function App() {
     setInviteCode('');
     setCompanyId(null);
     setCompanyName('');
+    setError('');
     setShowLanding(true);
   };
 
@@ -679,6 +695,23 @@ function App() {
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Data load error (raw error stays in console.error) */}
+        {error && (
+          <div className="mb-6 flex items-center justify-between gap-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{t.dataLoadError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadCompanyData(companyId)}
+              className="px-3 py-1.5 bg-white border border-red-300 rounded-md font-medium text-red-700 hover:bg-red-100 transition-colors shrink-0"
+            >
+              {t.tryAgain}
+            </button>
+          </div>
+        )}
+
         {/* Month Selector */}
         <div className="mb-6 flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
